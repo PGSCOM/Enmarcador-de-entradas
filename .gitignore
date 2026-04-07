@@ -2,4 +2,4 @@
 datos.json
 qr.txt
 __pycache__/
-entradas_imprimir.pdf
+*.pdf

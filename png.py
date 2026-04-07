@@ -36,8 +36,8 @@ try:
                 svg_file,
                 "--export-type=png",
                 f"--export-filename={png_file}",
-                "--export-width=1476",
-                "--export-height=478",
+                "--export-width=1890",
+                "--export-height=611",
             ]
 
             subprocess.run(command, check=True)

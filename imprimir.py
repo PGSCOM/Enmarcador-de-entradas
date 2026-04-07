@@ -18,9 +18,9 @@ INKSCAPE_PATH = r'C:\Program Files\Inkscape\bin\inkscape.exe'
 MAX_WORKERS = 16
 PAGE_WIDTH = 2480
 PAGE_HEIGHT = 3508
-PAGE_MARGIN_X = 20
-PAGE_MARGIN_Y = 20
-ITEM_SPACING = 10
+PAGE_MARGIN_X = 40
+PAGE_MARGIN_Y = 40
+ITEM_SPACING = 50 # 0, 10, 20, 50
 
 def get_best_layout(page_w, page_h, orig_w, orig_h, spacing=10, margin_x=0, margin_y=0):
     """
@@ -258,6 +258,13 @@ def generate_pdf_from_svgs(svg_files, output_pdf="salida.pdf"):
         print("No pages were generated.")
 
 if __name__ == "__main__":
-    svgs = create_svg_pages()
-    if svgs:
-        generate_pdf_from_svgs(svgs, OUTPUT_PDF)
+    combinaciones = [
+        ("entradas_macula_2025 espacio gigante.pdf", 80),
+        ("entradas_macula_2025 espacio grande.pdf", 50),
+        ("entradas_macula_2025 sin espacio.pdf", 0),
+    ]
+    
+    for pdf_name, current_spacing in combinaciones:
+        svgs = create_svg_pages(spacing=current_spacing)
+        if svgs:
+            generate_pdf_from_svgs(svgs, pdf_name)

@@ -9,3 +9,4 @@
 4. Meter todos los QRs en la misma carpeta (0.png, 1.png, ...)
 5. Ejecutar svg.py
 6. Ejecutar png.py
+7. Ejecutar imprimir.py

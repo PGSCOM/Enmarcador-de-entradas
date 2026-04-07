@@ -14,6 +14,9 @@ png_folder = r"./img/PNG"
 if not os.path.exists(png_folder) and os.path.exists(svg_folder):
     os.makedirs(png_folder)
 
+# Número de hilos a usar para conversiones concurrentes
+threads = 20
+
 try:
     svg_files = [filename for filename in os.listdir(svg_folder) if filename.endswith(".svg")]
 
@@ -40,7 +43,7 @@ try:
             subprocess.run(command, check=True)
             return filename
 
-        with ThreadPoolExecutor(max_workers=20) as executor:
+        with ThreadPoolExecutor(max_workers=threads) as executor:
             futures = [executor.submit(convertir_svg_a_png, filename) for filename in svg_files]
 
             for future in as_completed(futures):

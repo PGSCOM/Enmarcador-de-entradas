@@ -1,3 +1,4 @@
 /img/*
 datos.json
 qr.txt
+__pycache__/

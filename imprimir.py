@@ -18,32 +18,70 @@ INKSCAPE_PATH = r'C:\Program Files\Inkscape\bin\inkscape.exe'
 MAX_WORKERS = 16
 PAGE_WIDTH = 2480
 PAGE_HEIGHT = 3508
-PAGE_MARGIN_X = 0
-PAGE_MARGIN_Y = 0
-ITEM_SPACING = 0
+PAGE_MARGIN_X = 20
+PAGE_MARGIN_Y = 20
+ITEM_SPACING = 10
 
 def get_best_layout(page_w, page_h, orig_w, orig_h, spacing=10, margin_x=0, margin_y=0):
     """
-    Finds the maximum number of items that fit on the page, considering both normal and rotated orientations.
+    Finds the maximum number of items that fit on the page, packing them both in normal and rotated orientations.
     """
-    w_m, h_m = orig_w + spacing, orig_h + spacing
     usable_w = max(page_w - (margin_x * 2), 0)
     usable_h = max(page_h - (margin_y * 2), 0)
     
-    # Try Normal
-    nx1 = int((usable_w + spacing) // w_m)
-    ny1 = int((usable_h + spacing) // h_m)
-    count1 = nx1 * ny1
+    def calculate_pack(uw, uh, bw, bh, is_rotated):
+        nx = int((uw + spacing) // (bw + spacing)) if bw > 0 else 0
+        ny = int((uh + spacing) // (bh + spacing)) if bh > 0 else 0
+        count1 = nx * ny
+        
+        # Bottom leftover space
+        used_h = ny * (bh + spacing) - spacing if ny > 0 else 0
+        bottom_h_usable = max(0, uh - used_h - spacing)
+        bottom_pack_nx = int((uw + spacing) // (bh + spacing)) if bh > 0 else 0
+        bottom_pack_ny = int((bottom_h_usable + spacing) // (bw + spacing)) if bw > 0 else 0
+        bottom_count = bottom_pack_nx * bottom_pack_ny
+        
+        # Right leftover space
+        used_w = nx * (bw + spacing) - spacing if nx > 0 else 0
+        right_w_usable = max(0, uw - used_w - spacing)
+        right_pack_nx = int((right_w_usable + spacing) // (bh + spacing)) if bh > 0 else 0
+        right_pack_ny = int((uh + spacing) // (bw + spacing)) if bw > 0 else 0
+        right_count = right_pack_nx * right_pack_ny
+        
+        if bottom_count >= right_count:
+            return count1 + bottom_count, {
+                'main_nx': nx, 'main_ny': ny,
+                'main_bw': bw, 'main_bh': bh,
+                'main_rotated': is_rotated,
+                'extra_nx': bottom_pack_nx, 'extra_ny': bottom_pack_ny,
+                'extra_bw': bh, 'extra_bh': bw,
+                'extra_rotated': not is_rotated,
+                'extra_offset_x': 0,
+                'extra_offset_y': ny * (bh + spacing) if ny > 0 else 0,
+                'margin_x': margin_x, 'margin_y': margin_y, 'spacing': spacing,
+                'count': count1 + bottom_count
+            }
+        else:
+            return count1 + right_count, {
+                'main_nx': nx, 'main_ny': ny,
+                'main_bw': bw, 'main_bh': bh,
+                'main_rotated': is_rotated,
+                'extra_nx': right_pack_nx, 'extra_ny': right_pack_ny,
+                'extra_bw': bh, 'extra_bh': bw,
+                'extra_rotated': not is_rotated,
+                'extra_offset_x': nx * (bw + spacing) if nx > 0 else 0,
+                'extra_offset_y': 0,
+                'margin_x': margin_x, 'margin_y': margin_y, 'spacing': spacing,
+                'count': count1 + right_count
+            }
+
+    c1, pack1 = calculate_pack(usable_w, usable_h, orig_w, orig_h, False)
+    c2, pack2 = calculate_pack(usable_w, usable_h, orig_h, orig_w, True)
     
-    # Try Rotated
-    nx2 = int((usable_w + spacing) // h_m)
-    ny2 = int((usable_h + spacing) // w_m)
-    count2 = nx2 * ny2
-    
-    if count1 >= count2:
-        return {'rotated': False, 'nx': nx1, 'ny': ny1, 'count': count1, 'item_w': orig_w, 'item_h': orig_h, 'spacing': spacing, 'margin_x': margin_x, 'margin_y': margin_y}
+    if c1 >= c2:
+        return pack1
     else:
-        return {'rotated': True, 'nx': nx2, 'ny': ny2, 'count': count2, 'item_w': orig_h, 'item_h': orig_w, 'spacing': spacing, 'margin_x': margin_x, 'margin_y': margin_y}
+        return pack2
 
 def escape_xml(s):
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;").replace("'", "&apos;")
@@ -72,12 +110,14 @@ def create_svg_pages(
         print("Error: The image is too large to fit in the specified page size.")
         return []
     
-    print(f"Calculated layout: {layout['count']} items per page (Rotated: {layout['rotated']}) [Grid {layout['nx']}x{layout['ny']}]")
+    print(f"Calculated layout: {layout['count']} items per page [Main: {layout['main_nx']}x{layout['main_ny']} (Rotated: {layout['main_rotated']}), Extra: {layout['extra_nx']}x{layout['extra_ny']} (Rotated: {layout['extra_rotated']})]")
     
     svg_files_created = []
     
     pages = [png_files[i:i + layout['count']] for i in range(0, len(png_files), layout['count'])]
     
+    main_limit = layout['main_nx'] * layout['main_ny']
+
     for page_idx, page_files in enumerate(pages):
         svg_filename = os.path.join(dir_out, f"{page_idx}.svg")
         
@@ -90,25 +130,31 @@ def create_svg_pages(
         
         for idx_on_page, png_path in enumerate(page_files):
             # Calculate position
-            col = idx_on_page % layout['nx']
-            row = idx_on_page // layout['nx']
-            
-            x = layout['margin_x'] + col * (layout['item_w'] + layout['spacing'])
-            y = layout['margin_y'] + row * (layout['item_h'] + layout['spacing'])
+            if idx_on_page < main_limit:
+                col = idx_on_page % layout['main_nx']
+                row = idx_on_page // layout['main_nx']
+                
+                x = layout['margin_x'] + col * (layout['main_bw'] + layout['spacing'])
+                y = layout['margin_y'] + row * (layout['main_bh'] + layout['spacing'])
+                is_rotated = layout['main_rotated']
+                cell_w = layout['main_bw']
+            else:
+                extra_idx = idx_on_page - main_limit
+                col = extra_idx % layout['extra_nx']
+                row = extra_idx // layout['extra_nx']
+                
+                x = layout['margin_x'] + layout['extra_offset_x'] + col * (layout['extra_bw'] + layout['spacing'])
+                y = layout['margin_y'] + layout['extra_offset_y'] + row * (layout['extra_bh'] + layout['spacing'])
+                is_rotated = layout['extra_rotated']
+                cell_w = layout['extra_bw']
             
             # Use absolute uri with forward slashes for SVG href
             abs_png_path = os.path.abspath(png_path).replace("\\", "/")
             href = f"file:///{abs_png_path}"
             
-            if layout['rotated']:
-                # The image is rotated 90 degrees.
-                # In SVG, rotation is around the origin (0,0). We need to translate then rotate.
-                # An image of WxH (native) becomes HxW when rotated 90deg.
-                # So we translate to (x, y), rotate by 90deg, but since rotation moves the bounding box, 
-                # a 90deg rotation around top-left means the image goes into -y.
-                # Actually, translating to (x + H, y) and rotating by 90 puts it right.
+            if is_rotated:
                 svg_content.append(
-                    f'  <g transform="translate({x + layout["item_w"]}, {y}) rotate(90)">'
+                    f'  <g transform="translate({x + cell_w}, {y}) rotate(90)">'
                 )
                 svg_content.append(
                     f'    <image x="0" y="0" width="{orig_w}" height="{orig_h}" xlink:href="{escape_xml(href)}"/>'
